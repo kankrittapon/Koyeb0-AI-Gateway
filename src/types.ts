@@ -15,6 +15,8 @@ export interface ChatRequest {
   modelHint?: string;
   messages: ChatMessage[];
   metadata?: Record<string, unknown>;
+  sourceService?: string;
+  sourceUserId?: string;
 }
 
 export interface ChatResponse {

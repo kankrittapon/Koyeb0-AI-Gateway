@@ -2,6 +2,16 @@ import { routingPolicies } from "./policy";
 import { providers } from "./providers";
 import { ChatRequest, ChatResponse, PolicyKey, ProviderAttempt, ProviderKey } from "./types";
 
+export class GatewayRoutingError extends Error {
+  constructor(
+    message: string,
+    public readonly attempts: ProviderAttempt[]
+  ) {
+    super(message);
+    this.name = "GatewayRoutingError";
+  }
+}
+
 function resolvePolicy(request: ChatRequest): PolicyKey {
   return request.policy || "private_first";
 }
@@ -53,5 +63,5 @@ export async function routeChat(request: ChatRequest): Promise<ChatResponse> {
     }
   }
 
-  throw new Error(`All providers failed. ${errors.join(" | ")}`);
+  throw new GatewayRoutingError(`All providers failed. ${errors.join(" | ")}`, attempts);
 }

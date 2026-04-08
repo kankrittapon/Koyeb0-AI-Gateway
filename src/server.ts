@@ -1,29 +1,16 @@
 import express from "express";
-import { z } from "zod";
 import { config } from "./config";
-import { routeChat } from "./gateway";
+import { GatewayRoutingError, routeChat } from "./gateway";
+import { getRecentRequests, recordAiRequest, recordProviderAttempts, recordProviderHealth } from "./db";
+import { listModels } from "./models";
 import { routingPolicies } from "./policy";
 import { providers } from "./providers";
+import { chatRequestSchema, openAiChatSchema } from "./schemas";
 import { ChatRequest } from "./types";
 
 const app = express();
 
 app.use(express.json({ limit: "2mb" }));
-
-const chatRequestSchema = z.object({
-  mode: z.enum(["chat", "coding", "research"]).optional(),
-  policy: z.enum(["private_first", "cheap_first", "lab_mode"]).optional(),
-  modelHint: z.string().min(1).optional(),
-  messages: z
-    .array(
-      z.object({
-        role: z.enum(["system", "user", "assistant"]),
-        content: z.string().min(1)
-      })
-    )
-    .min(1),
-  metadata: z.record(z.string(), z.unknown()).optional()
-});
 
 app.use((req, res, next) => {
   const requestId = crypto.randomUUID();
@@ -72,6 +59,9 @@ app.get("/", (_req, res) => {
 app.get("/health", async (_req, res) => {
   const providerHealth = await Promise.all(Object.values(providers).map((provider) => provider.healthcheck()));
   const healthy = providerHealth.some((provider) => provider.healthy);
+  await recordProviderHealth(providerHealth).catch((error) => {
+    console.error("Failed to persist provider health", error);
+  });
 
   res.status(healthy ? 200 : 503).json({
     service: "koyeb0-ai-gateway",
@@ -82,11 +72,29 @@ app.get("/health", async (_req, res) => {
 
 app.get("/v1/providers", async (_req, res) => {
   const providerHealth = await Promise.all(Object.values(providers).map((provider) => provider.healthcheck()));
+  await recordProviderHealth(providerHealth).catch((error) => {
+    console.error("Failed to persist provider health", error);
+  });
   res.json(providerHealth);
 });
 
 app.get("/v1/policies", (_req, res) => {
   res.json(routingPolicies);
+});
+
+app.get("/v1/models", (_req, res) => {
+  res.json({
+    object: "list",
+    data: listModels()
+  });
+});
+
+app.get("/v1/debug/requests", async (_req, res) => {
+  const rows = await getRecentRequests();
+  res.json({
+    data: rows,
+    requestId: res.locals.requestId
+  });
 });
 
 app.post("/v1/chat", async (req, res) => {
@@ -104,14 +112,121 @@ app.post("/v1/chat", async (req, res) => {
 
   try {
     const response = await routeChat(request);
+    await recordAiRequest({
+      requestId: res.locals.requestId,
+      sourceService: request.sourceService || "unknown",
+      sourceUserId: request.sourceUserId,
+      requestMode: request.mode || "chat",
+      policyKey: request.policy || "private_first",
+      modelHint: request.modelHint,
+      promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
+      status: "succeeded",
+      provider: response.provider
+    });
+    await recordProviderAttempts(res.locals.requestId, response.attempts || []);
     res.json({
       ...response,
       requestId: res.locals.requestId
     });
   } catch (error) {
+    const attempts = error instanceof GatewayRoutingError ? error.attempts : [];
+    await recordAiRequest({
+      requestId: res.locals.requestId,
+      sourceService: request.sourceService || "unknown",
+      sourceUserId: request.sourceUserId,
+      requestMode: request.mode || "chat",
+      policyKey: request.policy || "private_first",
+      modelHint: request.modelHint,
+      promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
+      status: "failed",
+      errorMessage: error instanceof Error ? error.message : "Unknown gateway error"
+    });
+    await recordProviderAttempts(res.locals.requestId, attempts);
     res.status(502).json({
       error: error instanceof Error ? error.message : "Unknown gateway error",
       requestId: res.locals.requestId
+    });
+  }
+});
+
+app.post("/v1/chat/completions", async (req, res) => {
+  const parsed = openAiChatSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "Invalid OpenAI-compatible request",
+      details: parsed.error.flatten(),
+      requestId: res.locals.requestId
+    });
+    return;
+  }
+
+  const openAiRequest = parsed.data;
+  const request: ChatRequest = {
+    modelHint: openAiRequest.model,
+    messages: openAiRequest.messages,
+    metadata: openAiRequest.metadata,
+    sourceService: "openai-compatible",
+    sourceUserId: openAiRequest.user
+  };
+
+  try {
+    const response = await routeChat(request);
+    await recordAiRequest({
+      requestId: res.locals.requestId,
+      sourceService: "openai-compatible",
+      sourceUserId: openAiRequest.user,
+      requestMode: "chat",
+      policyKey: request.policy || "private_first",
+      modelHint: request.modelHint,
+      promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
+      status: "succeeded",
+      provider: response.provider
+    });
+    await recordProviderAttempts(res.locals.requestId, response.attempts || []);
+
+    res.json({
+      id: res.locals.requestId,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: response.model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: response.content
+          },
+          finish_reason: "stop"
+        }
+      ],
+      usage: {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      },
+      provider: response.provider,
+      attempts: response.attempts || []
+    });
+  } catch (error) {
+    const attempts = error instanceof GatewayRoutingError ? error.attempts : [];
+    await recordAiRequest({
+      requestId: res.locals.requestId,
+      sourceService: "openai-compatible",
+      sourceUserId: openAiRequest.user,
+      requestMode: "chat",
+      policyKey: "private_first",
+      modelHint: request.modelHint,
+      promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
+      status: "failed",
+      errorMessage: error instanceof Error ? error.message : "Unknown gateway error"
+    });
+    await recordProviderAttempts(res.locals.requestId, attempts);
+
+    res.status(502).json({
+      error: {
+        message: error instanceof Error ? error.message : "Unknown gateway error",
+        type: "gateway_error"
+      }
     });
   }
 });
