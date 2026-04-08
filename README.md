@@ -122,52 +122,56 @@ The SQL creates the tables needed for:
 - provider attempt logs
 - provider health logs
 
-## Deploy To Koyeb
+## Deploy To Railway
 
 This repository is set up for Docker-based deployment using the included `Dockerfile`.
 
-### Option A: GitHub -> Koyeb
+Recommended deployment target now:
+
+- architecture name: `Koyeb0`
+- real host: `Railway`
+- database: `Supabase0`
+
+### GitHub -> Railway
 
 1. Push this repository to GitHub.
-2. In Koyeb, create a new App from GitHub.
-3. Select this repository.
-4. Choose Dockerfile-based deployment.
-5. Set the service port to `8000` or map it from the `PORT` environment variable.
-6. Add all required environment variables.
+2. In Railway, create a `New Project`.
+3. Choose `Deploy from GitHub repo`.
+4. Select `Koyeb0-AI-Gateway`.
+5. Railway will detect the `Dockerfile`.
+6. Set all required environment variables.
 7. Deploy the service.
+8. After deploy, copy the public Railway URL.
 
-Recommended minimum Koyeb env vars:
+Recommended minimum Railway env vars:
 
 ```env
-PORT=8000
+PORT=8080
 NODE_ENV=production
 INTERNAL_API_KEY=change-this
-DATABASE_URL=postgresql://...
+DATABASE_URL=postgresql://postgres:YOUR_SUPABASE_DB_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
 OLLAMA_BASE_URL=http://your-private-ollama-endpoint:11434
 OLLAMA_MODEL=typhoon
 GEMINI_API_KEY=your-gemini-key
 GEMINI_MODEL=gemini-2.5-flash
 ENABLE_G4F=false
-DEFAULT_POLICY=private_first
-REQUEST_TIMEOUT_MS=45000
-LOG_LEVEL=info
 ```
 
-### Option B: Prebuilt Image -> Koyeb
+### Railway Deployment Notes
 
-1. Build and push the container image to a registry.
-2. In Koyeb, create a new App from a container image.
-3. Point Koyeb to the image.
-4. Set the port and env vars.
-5. Deploy.
-
-### Koyeb Deployment Notes
-
-- `Koyeb0` should be deployed as a backend service, not as a frontend app.
-- `DATABASE_URL` should point to `Supabase0`.
-- `OLLAMA_BASE_URL` should point to a reachable Ollama endpoint.
-- If Koyeb cannot reach your Tailscale-only Ollama directly, place a secure gateway in front of Ollama first.
+- `Koyeb0` should be deployed as a backend service, not a frontend app.
+- `DATABASE_URL` must point to `Supabase0`.
+- `OLLAMA_BASE_URL` must point to a reachable Ollama endpoint.
+- If Railway cannot reach your Tailscale-only Ollama directly, put a secure gateway in front of Ollama first.
 - Keep `g4f` disabled in production unless you intentionally want lab behavior.
+- Keep the architecture name `Koyeb0` even if the actual host is Railway.
+
+### Verify After Deploy
+
+- `GET /health`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- check that request logs are written to `Supabase0`
 
 ## Deploy Next.js
 
