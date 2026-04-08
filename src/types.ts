@@ -23,6 +23,7 @@ export interface ChatResponse {
   content: string;
   requestId: string;
   fallbackChain: ProviderKey[];
+  attempts?: ProviderAttempt[];
 }
 
 export interface ProviderHealth {
@@ -40,3 +41,9 @@ export interface ProviderAdapter {
   chat(request: ChatRequest): Promise<ChatResponse>;
 }
 
+export interface ProviderAttempt {
+  provider: ProviderKey;
+  success: boolean;
+  latencyMs: number;
+  error?: string;
+}

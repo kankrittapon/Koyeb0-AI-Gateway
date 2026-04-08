@@ -23,13 +23,39 @@ export class G4FProvider implements ProviderAdapter {
       throw new Error("g4f is not configured.");
     }
 
+    const response = await fetch(`${config.G4F_BASE_URL.replace(/\/$/, "")}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer none"
+      },
+      body: JSON.stringify({
+        model: request.modelHint || config.G4F_MODEL || "g4f",
+        messages: request.messages
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`g4f returned HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      model?: string;
+    };
+
+    const content = data.choices?.[0]?.message?.content || "";
+    if (!content) {
+      throw new Error("g4f returned an empty response.");
+    }
+
     return {
       provider: this.key,
-      model: request.modelHint || config.G4F_MODEL || "g4f",
-      content: `[stub] Experimental g4f response placeholder for mode ${request.mode || "chat"}`,
+      model: data.model || request.modelHint || config.G4F_MODEL || "g4f",
+      content,
       requestId: crypto.randomUUID(),
       fallbackChain: []
     };
   }
 }
-
