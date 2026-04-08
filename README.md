@@ -250,6 +250,53 @@ If you keep some backend routes in Next.js, use server-side environment variable
 - `DATABASE_URL` is technically optional, but production should provide it.
 - `Koyeb0` should stay focused on AI orchestration and not absorb unrelated business logic.
 
+## Deployment Plan (TH)
+
+### ถ้า Koyeb ของคุณยังไม่มีแผนฟรี
+
+- ให้ถือว่า repo นี้อยู่ในสถานะ `deploy-ready`
+- ยังไม่ต้องเปลี่ยน architecture name
+- ให้เตรียม env และ secret ให้ครบก่อน
+- เมื่อมี account ที่ deploy ได้ ค่อยใช้ขั้นตอนด้านล่างทันที
+
+### Koyeb0 เราจะใช้ทำอะไร
+
+- เป็น AI Gateway กลางของทุก service
+- รับ request จาก `Koyeb1` และ `Koyeb3`
+- route ไป `Ollama`, `Gemini`, และ optional `g4f`
+- เขียน log ลง `Supabase0`
+
+### วิธี deploy Koyeb0
+
+1. เปิด Koyeb แล้วสร้าง `Web Service`
+2. เลือก deploy จาก GitHub
+3. เลือก repo `Koyeb0-AI-Gateway`
+4. เลือก branch `main`
+5. เลือก build แบบ `Dockerfile`
+6. ตั้ง `Port` เป็น `8080`
+7. ใส่ environment variables ต่อไปนี้:
+- `PORT=8080`
+- `NODE_ENV=production`
+- `INTERNAL_API_KEY=...`
+- `DATABASE_URL=postgresql://postgres:YOUR_SUPABASE_DB_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres`
+- `OLLAMA_BASE_URL=...`
+- `OLLAMA_MODEL=typhoon`
+- `GEMINI_API_KEY=...` ถ้าใช้
+- `GEMINI_MODEL=gemini-2.5-flash`
+- `ENABLE_G4F=false`
+8. กด deploy
+9. หลัง deploy ให้ทดสอบ:
+- `GET /health`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+
+### สิ่งที่ต้องสำเร็จหลัง deploy
+
+- service รันได้
+- ต่อ `Supabase0` ได้
+- เรียก Ollama ได้
+- พร้อมให้ `Koyeb1` และ `Koyeb3` เรียกใช้งาน
+
 ## Sources
 
 - [Koyeb deploy guides](https://www.koyeb.com/docs)
