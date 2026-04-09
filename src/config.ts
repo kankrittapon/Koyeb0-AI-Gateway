@@ -14,7 +14,7 @@ const envSchema = z.object({
     .default("true")
     .transform((value) => value.toLowerCase() === "true"),
   OLLAMA_BASE_URL: z.string().url().default("http://127.0.0.1:11434"),
-  OLLAMA_MODEL: z.string().min(1).default("typhoon"),
+  OLLAMA_MODEL: z.string().min(1).default("scb10x/llama3.2-typhoon2-3b-instruct"),
   GEMINI_API_KEY: z.string().optional().default(""),
   GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
   ENABLE_G4F: z

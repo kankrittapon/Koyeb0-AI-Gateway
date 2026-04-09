@@ -4,6 +4,10 @@
 
 This service is a logical role name. `Koyeb0` can run on any real Koyeb account, and `Supabase0` can run on any real Supabase account.
 
+Current recommended local default model:
+
+- `scb10x/llama3.2-typhoon2-3b-instruct`
+
 ## What Koyeb0 Does
 
 - exposes one internal AI API for the rest of the platform
@@ -151,7 +155,7 @@ NODE_ENV=production
 INTERNAL_API_KEY=change-this
 DATABASE_URL=postgresql://postgres:YOUR_SUPABASE_DB_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
 OLLAMA_BASE_URL=http://your-private-ollama-endpoint:11434
-OLLAMA_MODEL=typhoon
+OLLAMA_MODEL=scb10x/llama3.2-typhoon2-3b-instruct
 GEMINI_API_KEY=your-gemini-key
 GEMINI_MODEL=gemini-2.5-flash
 ENABLE_G4F=false
@@ -172,6 +176,46 @@ ENABLE_G4F=false
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - check that request logs are written to `Supabase0`
+
+## Deploy On The Ollama Host (`100.68.88.63`)
+
+Recommended production shape now:
+
+- run `Koyeb0` on the same Tailscale host as Ollama
+- keep Ollama private
+- let `Koyeb1-3` call `Koyeb0` over Tailscale
+
+Files prepared for this deployment path:
+
+- `deploy/ai-brain/docker-compose.yml`
+- `deploy/ai-brain/.env.example`
+
+Recommended setup:
+
+1. clone this repo on `100.68.88.63`
+2. copy `deploy/ai-brain/.env.example` to `deploy/ai-brain/.env`
+3. set:
+- `TAILSCALE_BIND_IP=100.68.88.63`
+- `KOYEB0_HOST_PORT=18080`
+- `INTERNAL_API_KEY=...`
+- `DATABASE_URL=...`
+- `OLLAMA_BASE_URL=http://host.docker.internal:11434`
+- `OLLAMA_MODEL=scb10x/llama3.2-typhoon2-3b-instruct`
+- `GEMINI_API_KEY=...` if used
+4. run:
+
+```bash
+cd deploy/ai-brain
+docker compose up -d --build
+```
+
+5. verify from the host:
+
+```bash
+curl http://100.68.88.63:18080/health
+```
+
+This compose binds `Koyeb0` to the Tailscale IP only, so it is not exposed on every interface by default.
 
 ## Deploy Next.js
 
@@ -240,7 +284,7 @@ If you keep some backend routes in Next.js, use server-side environment variable
 - [ ] run `supabase/SQLEditor.sql` in `Supabase0`
 - [ ] set all Koyeb environment variables
 - [ ] confirm Koyeb can reach Ollama
-- [ ] set a default Ollama model such as `typhoon`
+- [ ] set the default Ollama model to `scb10x/llama3.2-typhoon2-3b-instruct`
 - [ ] test `GET /health`
 - [ ] test `POST /v1/chat/completions`
 - [ ] connect the Next.js server layer to `Koyeb0`
@@ -285,6 +329,7 @@ If you keep some backend routes in Next.js, use server-side environment variable
 - `DATABASE_URL=postgresql://postgres:YOUR_SUPABASE_DB_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres`
 - `OLLAMA_BASE_URL=...`
 - `OLLAMA_MODEL=typhoon`
+- `OLLAMA_MODEL=scb10x/llama3.2-typhoon2-3b-instruct`
 - `GEMINI_API_KEY=...` ถ้าใช้
 - `GEMINI_MODEL=gemini-2.5-flash`
 - `ENABLE_G4F=false`

@@ -1,0 +1,13 @@
+services:
+  koyeb0-ai-gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: koyeb0-ai-gateway
+    env_file:
+      - .env
+    ports:
+      - "${TAILSCALE_BIND_IP}:${KOYEB0_HOST_PORT}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
