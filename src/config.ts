@@ -1,13 +1,21 @@
 import dotenv from "dotenv";
+import dns from "node:dns";
 import { z } from "zod";
 
 dotenv.config();
+
+dns.setDefaultResultOrder("ipv4first");
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   INTERNAL_API_KEY: z.string().min(1).default("change-me"),
   DATABASE_URL: z.string().optional().default(""),
+  DB_FORCE_IPV4: z
+    .string()
+    .optional()
+    .default("true")
+    .transform((value) => value.toLowerCase() === "true"),
   LOG_PROMPT_PREVIEW: z
     .string()
     .optional()

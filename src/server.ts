@@ -1,7 +1,7 @@
 import express from "express";
 import { config } from "./config";
 import { GatewayRoutingError, routeChat } from "./gateway";
-import { getRecentRequests, recordAiRequest, recordProviderAttempts, recordProviderHealth } from "./db";
+import { getRecentRequests, persistSafely, recordAiRequest, recordProviderAttempts, recordProviderHealth } from "./db";
 import { listModels } from "./models";
 import { routingPolicies } from "./policy";
 import { providers } from "./providers";
@@ -59,9 +59,7 @@ app.get("/", (_req, res) => {
 app.get("/health", async (_req, res) => {
   const providerHealth = await Promise.all(Object.values(providers).map((provider) => provider.healthcheck()));
   const healthy = providerHealth.some((provider) => provider.healthy);
-  await recordProviderHealth(providerHealth).catch((error) => {
-    console.error("Failed to persist provider health", error);
-  });
+  await persistSafely("provider health", () => recordProviderHealth(providerHealth));
 
   res.status(healthy ? 200 : 503).json({
     service: "koyeb0-ai-gateway",
@@ -72,9 +70,7 @@ app.get("/health", async (_req, res) => {
 
 app.get("/v1/providers", async (_req, res) => {
   const providerHealth = await Promise.all(Object.values(providers).map((provider) => provider.healthcheck()));
-  await recordProviderHealth(providerHealth).catch((error) => {
-    console.error("Failed to persist provider health", error);
-  });
+  await persistSafely("provider health", () => recordProviderHealth(providerHealth));
   res.json(providerHealth);
 });
 
@@ -112,7 +108,7 @@ app.post("/v1/chat", async (req, res) => {
 
   try {
     const response = await routeChat(request);
-    await recordAiRequest({
+    await persistSafely("ai request", () => recordAiRequest({
       requestId: res.locals.requestId,
       sourceService: request.sourceService || "unknown",
       sourceUserId: request.sourceUserId,
@@ -122,15 +118,15 @@ app.post("/v1/chat", async (req, res) => {
       promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
       status: "succeeded",
       provider: response.provider
-    });
-    await recordProviderAttempts(res.locals.requestId, response.attempts || []);
+    }));
+    await persistSafely("provider attempts", () => recordProviderAttempts(res.locals.requestId, response.attempts || []));
     res.json({
       ...response,
       requestId: res.locals.requestId
     });
   } catch (error) {
     const attempts = error instanceof GatewayRoutingError ? error.attempts : [];
-    await recordAiRequest({
+    await persistSafely("ai request", () => recordAiRequest({
       requestId: res.locals.requestId,
       sourceService: request.sourceService || "unknown",
       sourceUserId: request.sourceUserId,
@@ -140,8 +136,8 @@ app.post("/v1/chat", async (req, res) => {
       promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
       status: "failed",
       errorMessage: error instanceof Error ? error.message : "Unknown gateway error"
-    });
-    await recordProviderAttempts(res.locals.requestId, attempts);
+    }));
+    await persistSafely("provider attempts", () => recordProviderAttempts(res.locals.requestId, attempts));
     res.status(502).json({
       error: error instanceof Error ? error.message : "Unknown gateway error",
       requestId: res.locals.requestId
@@ -171,7 +167,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 
   try {
     const response = await routeChat(request);
-    await recordAiRequest({
+    await persistSafely("ai request", () => recordAiRequest({
       requestId: res.locals.requestId,
       sourceService: "openai-compatible",
       sourceUserId: openAiRequest.user,
@@ -181,8 +177,8 @@ app.post("/v1/chat/completions", async (req, res) => {
       promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
       status: "succeeded",
       provider: response.provider
-    });
-    await recordProviderAttempts(res.locals.requestId, response.attempts || []);
+    }));
+    await persistSafely("provider attempts", () => recordProviderAttempts(res.locals.requestId, response.attempts || []));
 
     res.json({
       id: res.locals.requestId,
@@ -209,7 +205,7 @@ app.post("/v1/chat/completions", async (req, res) => {
     });
   } catch (error) {
     const attempts = error instanceof GatewayRoutingError ? error.attempts : [];
-    await recordAiRequest({
+    await persistSafely("ai request", () => recordAiRequest({
       requestId: res.locals.requestId,
       sourceService: "openai-compatible",
       sourceUserId: openAiRequest.user,
@@ -219,8 +215,8 @@ app.post("/v1/chat/completions", async (req, res) => {
       promptPreview: config.LOG_PROMPT_PREVIEW ? request.messages.map((message) => message.content).join("\n").slice(0, 1000) : undefined,
       status: "failed",
       errorMessage: error instanceof Error ? error.message : "Unknown gateway error"
-    });
-    await recordProviderAttempts(res.locals.requestId, attempts);
+    }));
+    await persistSafely("provider attempts", () => recordProviderAttempts(res.locals.requestId, attempts));
 
     res.status(502).json({
       error: {

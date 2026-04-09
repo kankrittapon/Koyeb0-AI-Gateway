@@ -4,8 +4,12 @@ import { ProviderAttempt, ProviderHealth } from "./types";
 
 let pool: Pool | null = null;
 
-if (config.DATABASE_URL) {
-  pool = new Pool({
+function buildPool(): Pool | null {
+  if (!config.DATABASE_URL) {
+    return null;
+  }
+
+  return new Pool({
     connectionString: config.DATABASE_URL,
     ssl:
       config.NODE_ENV === "production"
@@ -15,6 +19,8 @@ if (config.DATABASE_URL) {
         : undefined
   });
 }
+
+pool = buildPool();
 
 export function hasDatabase(): boolean {
   return Boolean(pool);
@@ -154,3 +160,10 @@ export async function getRecentRequests(limit = 20): Promise<unknown[]> {
   return result.rows;
 }
 
+export async function persistSafely(taskName: string, operation: () => Promise<void>): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    console.error(`Failed to persist ${taskName}`, error);
+  }
+}
